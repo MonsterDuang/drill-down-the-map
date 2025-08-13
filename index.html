@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+
+		<meta />
+
+		<title>地图下钻</title>
+
+		<style>
+			:root {
+				--primary: #1890ff;
+				--primary-hover: #40a9ff;
+				--bg: #f4f8fb;
+				--radius: 18px;
+				--shadow: 0 4px 24px 0 rgba(24, 144, 255, 0.08);
+			}
+
+			body {
+				margin: 0;
+				padding: 0;
+				font-family: Arial, sans-serif;
+				background: var(--bg);
+				min-height: 100vh;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+			}
+
+			.center-box {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				width: 100vw;
+				height: 100vh;
+			}
+
+			.map-container {
+				width: 80vw;
+				max-width: 1200px;
+				height: 80vh;
+				min-height: 400px;
+				background: #fff;
+				border-radius: var(--radius);
+				box-shadow: var(--shadow);
+				position: relative;
+				overflow: hidden;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				transition: box-shadow 0.3s;
+			}
+
+			#main {
+				width: 100%;
+				height: 70%;
+				border-radius: var(--radius);
+			}
+
+			.btn {
+				position: absolute;
+				top: 32px;
+				left: 32px;
+				padding: 10px 28px;
+				background-color: var(--primary);
+				color: #fff;
+				border: none;
+				border-radius: 6px;
+				cursor: pointer;
+				font-size: 16px;
+				font-weight: 500;
+				box-shadow: 0 2px 8px 0 rgba(24, 144, 255, 0.12);
+				transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+				z-index: 10;
+			}
+
+			.btn:hover {
+				background-color: var(--primary-hover);
+				transform: translateY(-2px) scale(1.04);
+				box-shadow: 0 4px 16px 0 rgba(24, 144, 255, 0.18);
+			}
+
+			@media (max-width: 900px) {
+				.map-container {
+					width: 98vw;
+					height: 70vh;
+				}
+
+				.btn {
+					top: 16px;
+					left: 16px;
+					padding: 8px 18px;
+					font-size: 14px;
+				}
+			}
+
+			@media (max-width: 600px) {
+				.map-container {
+					width: 100vw;
+					height: 60vh;
+					min-height: 220px;
+				}
+
+				.btn {
+					top: 8px;
+					left: 8px;
+					padding: 6px 10px;
+					font-size: 13px;
+				}
+			}
+		</style>
+
+		<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.6.0/echarts.min.js"
+			integrity="sha512-XSmbX3mhrD2ix5fXPTRQb2FwK22sRMVQTpBP2ac8hX7Dh/605hA2QDegVWiAvZPiXIxOV0CbkmUjGionDpbCmw=="
+			crossorigin="anonymous"
+			referrerpolicy="no-referrer"
+		></script>
+	</head>
+
+	<body>
+		<div class="center-box">
+			<div class="map-container">
+				<div id="main"></div>
+				<input type="button" class="btn" onClick="reutrnUp()" value="返回上一级" />
+			</div>
+		</div>
+
+		<script>
+			// 获取echartsDOM元素
+			const echartDOM = document.getElementById('main');
+			const chart = echarts.init(echartDOM);
+			let menus = [{ adcode: 100000, name: '全国' }];
+			/**   * @function获取地区数据   * @param{number}adcode- 地区编码，默认为100000（全国）   * */
+			const getGeoJson = async (adcode = 100000) => {
+				try {
+					const url = `https://geo.datav.aliyun.com/areas_v2/bound/${adcode}_full.json`;
+					const result = await axios.get(url);
+					return result.data;
+				} catch (err) {
+					return void0;
+				}
+			};
+			const updateEcharts = async (adcode, name) => {
+				// 默认获取全国行政区数据
+				const geoJson = await getGeoJson(adcode);
+				if (!geoJson) {
+					thrownewError('已经是最后一级了');
+				}
+				// 注册地图
+				echarts.registerMap(name, geoJson);
+				// 设置地图配置项
+				const option = {
+					title: { text: name, left: 'center' },
+					series: [
+						{
+							type: 'map',
+							map: name,
+							itemStyle: { areaColor: '#1890ff' },
+							data: geoJson['features'].map((item) => {
+								return { name: item.properties.name, value: item.properties.adcode };
+							}),
+						},
+					],
+				};
+				// 设置图表配置项
+				chart.setOption(option);
+			};
+			updateEcharts(100000, '全国');
+			// 点击行政区的时候,重新加载这个行政区的数据
+			chart.on('click', async (params) => {
+				const { value, name } = params.data;
+				if (value) {
+					try {
+						await updateEcharts(value, name);
+						menus.push({ adcode: value, name });
+					} catch (err) {
+						alert(err.message);
+					}
+				}
+			});
+			// 返回上一级
+			const reutrnUp = async () => {
+				if (menus.length > 1) {
+					menus.pop();
+					const { adcode, name } = menus[menus.length - 1];
+					await updateEcharts(adcode, name);
+				} else {
+					menus = [{ adcode: 100000, name: '全国' }];
+					await updateEcharts(100000, '全国');
+					alert('已经是最开始一级了。');
+				}
+			};
+		</script>
+	</body>
+</html>
